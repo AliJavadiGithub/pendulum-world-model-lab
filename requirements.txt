@@ -1,0 +1,4 @@
+# Install CUDA-enabled PyTorch separately; see README.
+numpy>=2.0,<3
+matplotlib>=3.8,<4
+gymnasium[classic-control]>=1.0,<2
