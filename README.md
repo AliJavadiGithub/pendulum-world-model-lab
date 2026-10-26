@@ -7,7 +7,7 @@ A reproducible, beginner-to-research learning log for **one-step neural dynamics
 - [x] Set up Ubuntu / virtual environment and CUDA-enabled PyTorch
 - [x] Train a neural one-step world model (first experimental run)
 - [x] Evaluate one-step MSE against a no-change baseline
-- [ ] Evaluate multi-step, open-loop rollouts
+- [x] Evaluate multi-step, open-loop rollouts
 - [ ] Add an MPC controller
 - [ ] Explore visual/latent world models
 - [ ] Explore small VLAs
@@ -75,6 +75,49 @@ The first successful run used the original `train_world_model.py` tutorial scrip
 | No-change baseline MSE (original state scale) | 0.1061588004 |
 
 The model's test one-step MSE was about 748x **lower** than the no-change baseline MSE on the reported dataset. This is a useful sanity check, **not** proof of long-horizon accuracy, safety or superiority to strong physics-informed baselines.
+
+## Experiment 02 — Multi-Step Open-Loop Prediction
+
+**Status:** Completed
+
+After training the one-step dynamics model, we evaluated its ability to predict future states recursively without receiving intermediate ground-truth observations.
+
+The evaluation used 10 independent Pendulum-v1 trajectories, each with a prediction horizon of 100 steps.
+
+### Results
+
+| Prediction Horizon | Mean State MSE |
+|---|---:|
+| 1 step | 0.000012 |
+| 5 steps | 0.000564 |
+| 10 steps | 0.004254 |
+| 20 steps | 0.009564 |
+| 50 steps | 2.329447 |
+| 100 steps | 6.113632 |
+
+The model maintains low prediction errors over short horizons, but errors increase substantially during longer open-loop rollouts.
+
+### Prediction Error Growth
+
+![Compounding prediction error](results/multi_step/rollout_error.png)
+
+### Actual vs. Predicted Angular Velocity
+
+![Angular velocity comparison](results/multi_step/rollout_comparison.png)
+
+### Key Findings
+
+- Accurate one-step predictions do not guarantee accurate long-horizon predictions.
+- Recursive predictions can accumulate errors and drift away from physically valid states.
+- Short-horizon model predictive control (MPC) is a promising next experiment, although its effectiveness remains to be evaluated.
+
+**Detailed experiment report:** [Multi-Step Prediction Evaluation](docs/02-multi-step-prediction.md)
+
+### Next Experiment
+
+**Experiment 03 — Model Predictive Control**
+
+Implement receding-horizon MPC using the learned dynamics model and compare different planning horizons and control performance against baseline policies.
 
 ### Understanding the metrics
 
