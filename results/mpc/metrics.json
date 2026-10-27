@@ -1,0 +1,44 @@
+{
+  "setup": {
+    "episodes": 3,
+    "steps": 200,
+    "horizon": 10,
+    "candidates": 256,
+    "seeds": [
+      21000,
+      21001,
+      21002
+    ],
+    "checkpoint": "/home/ali/projects/pendulum-world-model-lab/runs/one_step/pendulum_world_model.pt",
+    "device": "cuda"
+  },
+  "summary": {
+    "zero": {
+      "mean_return": -766.2891633837426,
+      "std_return": 387.2477473160903,
+      "returns": [
+        -503.6926175770348,
+        -481.38614207975144,
+        -1313.7887304944416
+      ]
+    },
+    "random": {
+      "mean_return": -954.3050455700319,
+      "std_return": 257.89249110797766,
+      "returns": [
+        -637.6978009275144,
+        -955.8199727161527,
+        -1269.3973630664286
+      ]
+    },
+    "mpc": {
+      "mean_return": -84.5857489155252,
+      "std_return": 118.95200807776375,
+      "returns": [
+        -0.5812415163586458,
+        -0.3667587967001154,
+        -252.80924643351685
+      ]
+    }
+  }
+}
