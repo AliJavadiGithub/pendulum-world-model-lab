@@ -10,8 +10,8 @@ The repository keeps **code, observed results, plots, and experiment notes** tog
 - [x] **Experiment 01:** Train and evaluate a one-step neural dynamics model
 - [x] **Experiment 02:** Evaluate 100-step open-loop predictions
 - [x] **Experiment 03:** Evaluate learned-model MPC against zero-torque and random baselines
-- [ ] Analyze difficult MPC initial conditions and evaluate more seeds
-- [ ] Compare MPC planning horizons (5, 10, and 20 steps)
+- [x] **Experiment 04:** Compare MPC planning horizons (H=5, 10, 20) over 10 paired seeds
+- [ ] **Experiment 05:** Compare random shooting and CEM with matched candidate-evaluation budgets
 - [ ] Explore latent/visual world models
 - [ ] Explore small VLA policies
 
@@ -77,6 +77,9 @@ python src/evaluate_rollout.py
 
 # Experiment 03: receding-horizon, random-shooting MPC
 python src/evaluate_mpc.py
+
+# Experiment 04: paired comparison of planning horizons
+python src/evaluate_horizons.py --episodes 10 --horizons 5 10 20
 ```
 
 The training script saves its model and normalization statistics to `runs/one_step/pendulum_world_model.pt`. That path is the default checkpoint for the later experiments. Training runs and model weights are intentionally not committed to Git; observed results and figures are included under `results/`.
@@ -158,24 +161,47 @@ The angle plot shows **only seed 21000** and should not be interpreted as eviden
 
 [Detailed report — Experiment 03](docs/03-model-predictive-control.md)
 
+## Experiment 04 — MPC planning-horizon ablation
+
+**Completed: October 29, 2026 (results supplied).** The same learned dynamics checkpoint was evaluated with random-shooting MPC on 10 paired environment reset seeds (`21000`–`21009`), 200 environment steps per episode, and 256 candidate action sequences per decision. Only the planning horizon changed (`H=5`, `H=10`, `H=20`). Results are exploratory, not a statistically conclusive benchmark.
+
+| Horizon | Mean return ± SD | Median return | Mean final-50 stable fraction | Mean planning time |
+|---|---:|---:|---:|---:|
+| 5 | -849.57 ± 586.09 | -1065.38 | 30% | 0.8 ms |
+| 10 | -223.34 ± 190.89 | -251.09 | 100% | 1.3 ms |
+| 20 | -219.35 ± 221.94 | -124.38 | 100% | 2.5 ms |
+
+Here a time step counts as *stable* if the wrapped angle magnitude is below `0.2 rad` **and** the angular-velocity magnitude is below `0.5 rad/s`. The stability percentage aggregates the fraction of the **last 50 steps** satisfying that diagnostic criterion; it is not a general safety guarantee. In this particular run, all ten H=10 and H=20 episodes reported a final-window fraction of `1.00`, while only three H=5 episodes did.
+
+H=5 struggled to swing up from several initial states. H=10 and H=20 both achieved the final-window stability criterion across the tested seeds, but H=20's mean return advantage was only `3.99` points and its average planning time was approximately `1.9×` higher. H=10 had the better total return in six of ten paired episodes. Longer horizons also enlarge the action-sequence search space, so these results cannot isolate model-prediction error from random-shooting optimization difficulty.
+
+![Per-episode returns and mean returns by horizon](results/mpc_horizon_ablation/horizon_returns.png)
+
+![Wrapped-angle trajectories for seed 21002](results/mpc_horizon_ablation/seed_21002_angles.png)
+
+The trajectory plot for seed `21002` illustrates that H=5 continued rotating while H=10 and H=20 approached and maintained the upright configuration later in the episode. Discontinuities at `±π` are caused by angle wrapping.
+
+**Files:** `results/mpc_horizon_ablation/metrics.json`, `results/mpc_horizon_ablation/trajectories.csv`, and the two figures above.
+
+[Detailed report — Experiment 04](docs/04-mpc-horizon-ablation.md)
+
 ## Interpretation and limitations
 
 - One-step metrics, multi-step metrics, and MPC returns measure **different things** and should not be compared numerically as if they were the same metric.
 - State MSE averages cosine, sine, and angular velocity terms, which have different physical scales; per-component errors should be inspected.
 - The learned dynamics do not explicitly enforce `cos²(theta) + sin²(theta) = 1`.
 - The MPC planning cost is an approximation to the environment objective: the code evaluates its cost on **predicted next states**, while the Gymnasium reward is calculated using the environment's current state. Do not describe the two as exactly identical.
-- Random shooting is a simple optimizer, not an optimal MPC solver. A 10-step horizon may struggle with swing-up from some initial states.
-- The MPC evaluation includes only **three seeds**; the displayed `±` values are population standard deviations, **not confidence intervals**.
+- Random shooting is an approximate sequence optimizer. Increasing horizon also increases search difficulty when the number of sampled action sequences stays fixed.
+- Experiment 03 evaluated only **three seeds** and Experiment 04 only **ten seeds**; the reported `±` values are across-seed standard deviations, **not confidence intervals**.
 - The training data used random actions. Performance under planner-induced state distributions may differ.
 - Exact results can vary across versions, seeds, GPU kernels, and action-sampling behavior.
 
 ## Next steps
 
-1. Inspect the `21002` trajectory and initial state to investigate its lower return.
-2. Evaluate each policy on **20–30 shared seeds** and report return distributions, medians, success criteria, and compute time.
-3. Run a **planning-horizon ablation** at 5, 10, and 20 steps, holding other settings fixed.
-4. Analyze per-component prediction error, geometric validity, and uncertainty.
-5. Explore visual/latent world models and lightweight VLA policies.
+1. **Experiment 05:** compare random shooting against Cross-Entropy Method (CEM) planning at `H=10` and `H=20`, holding the learned checkpoint fixed and matching the total number of evaluated candidate sequences per decision.
+2. Expand to at least 20–30 paired seeds, and report per-seed returns, medians, variability, stabilization diagnostics, and computation time.
+3. Investigate how planner optimization, initial conditions, and accumulated model error each contribute to failures; evaluate state-wise error and physical constraint violations.
+4. Extend to latent/visual world models and lightweight VLA policies.
 
 See [the roadmap](docs/roadmap.md) for longer-term work.
 
@@ -192,11 +218,13 @@ pendulum-world-model-lab/
 │   ├── train_one_step.py
 │   ├── plot_first_run.py
 │   ├── evaluate_rollout.py
-│   └── evaluate_mpc.py
+│   ├── evaluate_mpc.py
+│   └── evaluate_horizons.py
 ├── docs/
 │   ├── roadmap.md
 │   ├── 02-multi-step-prediction.md
-│   └── 03-model-predictive-control.md
+│   ├── 03-model-predictive-control.md
+│   └── 04-mpc-horizon-ablation.md
 ├── results/
 │   ├── first_run_observed.json
 │   ├── first_run_training_curve.png
@@ -208,6 +236,11 @@ pendulum-world-model-lab/
 │       ├── trajectories.csv
 │       ├── returns.png
 │       └── angles.png
+│   └── mpc_horizon_ablation/
+│       ├── metrics.json
+│       ├── trajectories.csv
+│       ├── horizon_returns.png
+│       └── seed_21002_angles.png
 └── runs/                  # generated locally; excluded by .gitignore
     └── one_step/
         └── pendulum_world_model.pt
