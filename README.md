@@ -11,7 +11,8 @@ The repository keeps **code, observed results, plots, and experiment notes** tog
 - [x] **Experiment 02:** Evaluate 100-step open-loop predictions
 - [x] **Experiment 03:** Evaluate learned-model MPC against zero-torque and random baselines
 - [x] **Experiment 04:** Compare MPC planning horizons (H=5, 10, 20) over 10 paired seeds
-- [ ] **Experiment 05:** Compare random shooting and CEM with matched candidate-evaluation budgets
+- [x] **Experiment 05:** Compare Random Shooting and CEM over 30 paired seeds at H=10 and H=20
+- [ ] **Experiment 06:** Improve world-model rollout accuracy and evaluate downstream control
 - [ ] Explore latent/visual world models
 - [ ] Explore small VLA policies
 
@@ -80,6 +81,9 @@ python src/evaluate_mpc.py
 
 # Experiment 04: paired comparison of planning horizons
 python src/evaluate_horizons.py --episodes 10 --horizons 5 10 20
+
+# Experiment 05: Random Shooting vs. CEM (30 paired seeds)
+python src/compare_planners.py --episodes 30 --horizons 10 20
 ```
 
 The training script saves its model and normalization statistics to `runs/one_step/pendulum_world_model.pt`. That path is the default checkpoint for the later experiments. Training runs and model weights are intentionally not committed to Git; observed results and figures are included under `results/`.
@@ -185,25 +189,46 @@ The trajectory plot for seed `21002` illustrates that H=5 continued rotating whi
 
 [Detailed report — Experiment 04](docs/04-mpc-horizon-ablation.md)
 
+## Experiment 05 — Random Shooting vs. CEM
+
+**Completed: November 1, 2026 (results supplied).** We compared two sequence optimizers in receding-horizon MPC, keeping the same learned world-model checkpoint, planning cost and environment reset seeds (`21000`–`21029`). Both evaluated **1,024 candidate action sequences per decision**: Random Shooting sampled 1,024 uniformly; CEM performed four rounds of 256 samples with a 10% elite fraction. Each episode lasted 200 steps. Horizons were 10 and 20 steps.
+
+| Horizon | Planner | Mean return ± SD | Median return | Final-50 stability | Planning time |
+|---|---|---:|---:|---:|---:|
+| 10 | Random Shooting | -232.52 ± 188.33 | -189.47 | 100% | 1.5 ms |
+| 10 | CEM | **-195.03 ± 170.72** | -129.81 | 100% | 6.3 ms |
+| 20 | Random Shooting | -248.11 ± 208.56 | -180.49 | 100% | 2.8 ms |
+| 20 | CEM | **-170.53 ± 127.97** | -121.68 | 100% | 11.5 ms |
+
+CEM improved mean episode return by **37.49** points at H=10 and **77.58** at H=20, but required approximately **4.2×** and **4.1×** the mean planning time, respectively. It was **not uniformly better**: for example, at seed 21014 and H=10, CEM returned `-784.40` versus Random Shooting's `-469.31`. The reported 100% final-50 stability applies only to the diagnostic upright criterion over the last 50 steps; it does not mean all trajectories had near-zero cost or were stable throughout.
+
+![Returns by planner and horizon](results/mpc_planner_comparison/planner_returns.png)
+
+![Seed 21002: trajectory comparison by planner and horizon](results/mpc_planner_comparison/seed_21002_angles.png)
+
+**Files:** `results/mpc_planner_comparison/metrics.json`, `results/mpc_planner_comparison/trajectories.csv`, and the two figures above.
+
+[Detailed report — Experiment 05](docs/05-random-shooting-vs-cem.md)
+
 ## Interpretation and limitations
 
 - One-step metrics, multi-step metrics, and MPC returns measure **different things** and should not be compared numerically as if they were the same metric.
 - State MSE averages cosine, sine, and angular velocity terms, which have different physical scales; per-component errors should be inspected.
 - The learned dynamics do not explicitly enforce `cos²(theta) + sin²(theta) = 1`.
 - The MPC planning cost is an approximation to the environment objective: the code evaluates its cost on **predicted next states**, while the Gymnasium reward is calculated using the environment's current state. Do not describe the two as exactly identical.
-- Random shooting is an approximate sequence optimizer. Increasing horizon also increases search difficulty when the number of sampled action sequences stays fixed.
-- Experiment 03 evaluated only **three seeds** and Experiment 04 only **ten seeds**; the reported `±` values are across-seed standard deviations, **not confidence intervals**.
+- Random Shooting and CEM are approximate sequence optimizers; equal candidate-sequence budgets do not imply equal optimization quality or wall-clock time. Increasing horizon also increases search difficulty.
+- Experiment 03 evaluated **three seeds**, Experiment 04 **ten seeds**, and Experiment 05 **30 paired seeds**. Reported `±` values are across-seed standard deviations, **not confidence intervals**. Internal planner randomness was not independently replicated.
 - The training data used random actions. Performance under planner-induced state distributions may differ.
 - Exact results can vary across versions, seeds, GPU kernels, and action-sampling behavior.
 
 ## Next steps
 
-1. **Experiment 05:** compare random shooting against Cross-Entropy Method (CEM) planning at `H=10` and `H=20`, holding the learned checkpoint fixed and matching the total number of evaluated candidate sequences per decision.
-2. Expand to at least 20–30 paired seeds, and report per-seed returns, medians, variability, stabilization diagnostics, and computation time.
-3. Investigate how planner optimization, initial conditions, and accumulated model error each contribute to failures; evaluate state-wise error and physical constraint violations.
-4. Extend to latent/visual world models and lightweight VLA policies.
+1. **Experiment 06 — Improving world-model rollout accuracy:** test unit-circle projection, multi-step training and their combination against the original one-step model.
+2. Compare per-component errors, physically invalid predictions and long-horizon rollout behavior using common evaluation trajectories.
+3. Hold the planner and evaluation seeds fixed while measuring whether lower rollout error improves MPC episode return and stabilization behavior.
+4. Extend toward latent/visual world models and lightweight VLA policies.
 
-See [the roadmap](docs/roadmap.md) for longer-term work.
+See [the roadmap](docs/roadmap.md) for longer-term work. The roadmap may need a separate update to reflect Experiments 05–06.
 
 ## Repository layout
 
@@ -219,27 +244,34 @@ pendulum-world-model-lab/
 │   ├── plot_first_run.py
 │   ├── evaluate_rollout.py
 │   ├── evaluate_mpc.py
-│   └── evaluate_horizons.py
+│   ├── evaluate_horizons.py
+│   └── compare_planners.py
 ├── docs/
 │   ├── roadmap.md
 │   ├── 02-multi-step-prediction.md
 │   ├── 03-model-predictive-control.md
-│   └── 04-mpc-horizon-ablation.md
+│   ├── 04-mpc-horizon-ablation.md
+│   └── 05-random-shooting-vs-cem.md
 ├── results/
 │   ├── first_run_observed.json
 │   ├── first_run_training_curve.png
 │   ├── multi_step/
 │   │   ├── rollout_error.png
 │   │   └── rollout_comparison.png
-│   └── mpc/
+│   ├── mpc/
+│   │   ├── metrics.json
+│   │   ├── trajectories.csv
+│   │   ├── returns.png
+│   │   └── angles.png
+│   ├── mpc_horizon_ablation/
+│   │   ├── metrics.json
+│   │   ├── trajectories.csv
+│   │   ├── horizon_returns.png
+│   │   └── seed_21002_angles.png
+│   └── mpc_planner_comparison/
 │       ├── metrics.json
 │       ├── trajectories.csv
-│       ├── returns.png
-│       └── angles.png
-│   └── mpc_horizon_ablation/
-│       ├── metrics.json
-│       ├── trajectories.csv
-│       ├── horizon_returns.png
+│       ├── planner_returns.png
 │       └── seed_21002_angles.png
 └── runs/                  # generated locally; excluded by .gitignore
     └── one_step/
