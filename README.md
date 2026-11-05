@@ -1,8 +1,8 @@
 # Pendulum World Model Lab
 
-A hands-on research learning log on **neural dynamics prediction, open-loop world-model evaluation, and model predictive control (MPC)** using PyTorch and Gymnasium's `Pendulum-v1` environment. The longer-term goal is to explore latent/visual world models and vision-language-action (VLA) policies.
+I use this repository to study neural dynamics models and model predictive control (MPC) in Gymnasium's `Pendulum-v1` environment. I started with one-step state prediction and progressively added open-loop evaluation, MPC, planner comparisons, and multi-step training. I plan to extend the work to recurrent and visual world models.
 
-The repository keeps **code, observed results, plots, and experiment notes** together. Reported measurements come from local experiments; they are not guaranteed to reproduce identically across machines or random samples.
+I keep the code, measurements, plots, and experiment notes together so I can revisit each result. Exact numbers may vary across hardware and stochastic runs.
 
 ## Progress
 
@@ -12,7 +12,8 @@ The repository keeps **code, observed results, plots, and experiment notes** tog
 - [x] **Experiment 03:** Evaluate learned-model MPC against zero-torque and random baselines
 - [x] **Experiment 04:** Compare MPC planning horizons (H=5, 10, 20) over 10 paired seeds
 - [x] **Experiment 05:** Compare Random Shooting and CEM over 30 paired seeds at H=10 and H=20
-- [ ] **Experiment 06:** Improve world-model rollout accuracy and evaluate downstream control
+- [x] **Experiment 06:** Multi-step training, projection, open-loop evaluation, MPC and closed-loop diagnostics
+- [ ] **Experiment 07:** First recurrent latent-state world model (RSSM preparation)
 - [ ] Explore latent/visual world models
 - [ ] Explore small VLA policies
 
@@ -49,12 +50,12 @@ python -m pip install --upgrade pip
 
 # Install CUDA-enabled PyTorch using the official selector:
 # https://pytorch.org/get-started/locally/
-# The experiment machine used torch 2.11.0+cu126.
+# I used torch 2.11.0+cu126.
 python -m pip install -r requirements.txt
 python -c 'import torch; print(torch.__version__, torch.cuda.is_available())'
 ```
 
-If you already have a working environment, activate it instead. On the original machine:
+If you already have a working environment, activate it instead. On my laptop:
 
 ```bash
 source ~/projects/world-models/.venv/bin/activate
@@ -64,13 +65,13 @@ Do not install a separate system-wide CUDA Toolkit just for these experiments un
 
 ## Reproduce the experiments
 
-Run these from the **repository root** in order:
+Run the scripts from the repository root:
 
 ```bash
 # Experiment 01: train the model and save its checkpoint
 python src/train_one_step.py
 
-# Plot six recorded points from the historical first run
+# Plot the training-loss measurements from the first run
 python src/plot_first_run.py
 
 # Experiment 02: 100-step open-loop predictions
@@ -84,13 +85,22 @@ python src/evaluate_horizons.py --episodes 10 --horizons 5 10 20
 
 # Experiment 05: Random Shooting vs. CEM (30 paired seeds)
 python src/compare_planners.py --episodes 30 --horizons 10 20
+
+# Experiment 06: fine-tune and evaluate four prediction configurations
+python src/experiment06.py --epochs 15 --train-episodes 100 \
+  --train-horizon 5 --eval-episodes 20 --rollout-horizon 100 --mpc-episodes 10
+
+# Experiment 06 diagnostics (requires saved checkpoints and trajectory CSV)
+python src/diagnose_experiment06.py --seeds 70002 70006
+python src/analyze_projection_counterfactual.py --seed 70006 --steps 30 55
+python src/find_projection_divergence.py --seeds 70002 70006
 ```
 
 The training script saves its model and normalization statistics to `runs/one_step/pendulum_world_model.pt`. That path is the default checkpoint for the later experiments. Training runs and model weights are intentionally not committed to Git; observed results and figures are included under `results/`.
 
 ## Experiment 01 — One-step neural dynamics prediction
 
-**Completed: October 25, 2026.** The historical first run used the tutorial script preserved as [`src/original_train_world_model.py`](src/original_train_world_model.py).
+My first training run used the script preserved as [`src/original_train_world_model.py`](src/original_train_world_model.py).
 
 | Measurement | Observed value |
 |---|---:|
@@ -105,13 +115,13 @@ The training script saves its model and normalization statistics to `runs/one_st
 
 The test MSE was approximately **748 times smaller** than the simple no-change baseline's MSE on that run. The baseline predicts `s_(t+1) = s_t`; because the target is `Y_test = s_(t+1) - s_t`, its squared error simplifies to `mean(Y_test ** 2)`.
 
-**Important:** training MSE above is on *normalized deltas*, while test MSE is on the *original state scale*. Their numerical magnitudes must not be compared directly. The maintained training script reports comparable train/test metrics in matching spaces. The historical action sampling was not fully seeded, so reruns can differ.
+Training MSE above is on *normalized deltas*, while test MSE is on the *original state scale*. Their numerical magnitudes must not be compared directly. The maintained training script reports comparable train/test metrics in matching spaces. I did not explicitly seed the action sampler in the initial run, so its exact measurements may differ on repetition.
 
 ![Observed first-run training loss](results/first_run_training_curve.png)
 
 ## Experiment 02 — Multi-step open-loop prediction
 
-**Completed: October 26, 2026.** The trained model was rolled forward recursively for 100 steps under the **same action sequences** applied to `Pendulum-v1`, across 10 independently initialized episodes. After the initial state, the predictor did not receive intermediate ground-truth states.
+I evaluated 100-step recursive predictions over 10 independently initialized episodes, using the same action sequences in the model and `Pendulum-v1`. After the initial state, the predictor did not receive intermediate ground-truth states.
 
 | Prediction step | Mean state MSE |
 |---|---:|
@@ -122,7 +132,7 @@ The test MSE was approximately **748 times smaller** than the simple no-change b
 | 50 | 2.329447 |
 | 100 | 6.113632 |
 
-One-step accuracy did **not** guarantee long-horizon accuracy: errors grew sharply on some trajectories. Plausible factors include compounding errors, distribution shift under recursive predictions, and the lack of an enforced `cos²(theta) + sin²(theta) = 1` constraint. These explanations have not yet been isolated experimentally.
+Accurate one-step predictions did not translate into accurate long-horizon predictions: errors grew sharply on some trajectories. Plausible factors include compounding errors, distribution shift under recursive predictions, and the lack of an enforced `cos²(theta) + sin²(theta) = 1` constraint. I have not isolated the contribution of each factor.
 
 ![Mean multi-step prediction error](results/multi_step/rollout_error.png)
 
@@ -132,7 +142,7 @@ One-step accuracy did **not** guarantee long-horizon accuracy: errors grew sharp
 
 ## Experiment 03 — Learned-model MPC
 
-**Completed: October 28, 2026 (results received).** A receding-horizon, **random-shooting MPC** policy evaluated candidate torque sequences using the learned dynamics model. At each environment step, MPC selected the lowest-cost simulated sequence, executed **only its first action**, observed the actual next state, and replanned.
+I used the learned dynamics model in a receding-horizon MPC controller with random shooting to evaluate candidate torque sequences. At each environment step, MPC selected the lowest-cost simulated sequence, executed **only its first action**, observed the actual next state, and replanned.
 
 ### Evaluation protocol
 
@@ -161,13 +171,13 @@ MPC outperformed both baselines **on all three evaluated seeds**, achieving near
 
 The angle plot shows **only seed 21000** and should not be interpreted as evidence that all MPC episodes remained upright. The apparent jumps between `+pi` and `-pi` on baseline trajectories result from angle wrapping.
 
-**Files:** `results/mpc/metrics.json`, `results/mpc/trajectories.csv`, `results/mpc/returns.png`, `results/mpc/angles.png`.
+Data and figures: `results/mpc/metrics.json`, `results/mpc/trajectories.csv`, `results/mpc/returns.png`, `results/mpc/angles.png`.
 
 [Detailed report — Experiment 03](docs/03-model-predictive-control.md)
 
 ## Experiment 04 — MPC planning-horizon ablation
 
-**Completed: October 29, 2026 (results supplied).** The same learned dynamics checkpoint was evaluated with random-shooting MPC on 10 paired environment reset seeds (`21000`–`21009`), 200 environment steps per episode, and 256 candidate action sequences per decision. Only the planning horizon changed (`H=5`, `H=10`, `H=20`). Results are exploratory, not a statistically conclusive benchmark.
+I compared random-shooting MPC horizons using the same learned dynamics checkpoint on 10 common environment reset seeds (`21000`–`21009`), 200 environment steps per episode, and 256 candidate action sequences per decision. Only the planning horizon changed (`H=5`, `H=10`, `H=20`). Results are exploratory, not a statistically conclusive benchmark.
 
 | Horizon | Mean return ± SD | Median return | Mean final-50 stable fraction | Mean planning time |
 |---|---:|---:|---:|---:|
@@ -185,13 +195,13 @@ H=5 struggled to swing up from several initial states. H=10 and H=20 both achiev
 
 The trajectory plot for seed `21002` illustrates that H=5 continued rotating while H=10 and H=20 approached and maintained the upright configuration later in the episode. Discontinuities at `±π` are caused by angle wrapping.
 
-**Files:** `results/mpc_horizon_ablation/metrics.json`, `results/mpc_horizon_ablation/trajectories.csv`, and the two figures above.
+Data and figures: `results/mpc_horizon_ablation/metrics.json`, `results/mpc_horizon_ablation/trajectories.csv`, and the two figures above.
 
 [Detailed report — Experiment 04](docs/04-mpc-horizon-ablation.md)
 
 ## Experiment 05 — Random Shooting vs. CEM
 
-**Completed: November 1, 2026 (results supplied).** We compared two sequence optimizers in receding-horizon MPC, keeping the same learned world-model checkpoint, planning cost and environment reset seeds (`21000`–`21029`). Both evaluated **1,024 candidate action sequences per decision**: Random Shooting sampled 1,024 uniformly; CEM performed four rounds of 256 samples with a 10% elite fraction. Each episode lasted 200 steps. Horizons were 10 and 20 steps.
+I compared Random Shooting with CEM in receding-horizon MPC, keeping the same world-model checkpoint, planning cost, and environment reset seeds (`21000`–`21029`). Both evaluated **1,024 candidate action sequences per decision**: Random Shooting sampled 1,024 uniformly; CEM performed four rounds of 256 samples with a 10% elite fraction. Each episode lasted 200 steps. Horizons were 10 and 20 steps.
 
 | Horizon | Planner | Mean return ± SD | Median return | Final-50 stability | Planning time |
 |---|---|---:|---:|---:|---:|
@@ -200,35 +210,50 @@ The trajectory plot for seed `21002` illustrates that H=5 continued rotating whi
 | 20 | Random Shooting | -248.11 ± 208.56 | -180.49 | 100% | 2.8 ms |
 | 20 | CEM | **-170.53 ± 127.97** | -121.68 | 100% | 11.5 ms |
 
-CEM improved mean episode return by **37.49** points at H=10 and **77.58** at H=20, but required approximately **4.2×** and **4.1×** the mean planning time, respectively. It was **not uniformly better**: for example, at seed 21014 and H=10, CEM returned `-784.40` versus Random Shooting's `-469.31`. The reported 100% final-50 stability applies only to the diagnostic upright criterion over the last 50 steps; it does not mean all trajectories had near-zero cost or were stable throughout.
+CEM improved mean episode return by **37.49** points at H=10 and **77.58** at H=20, but required approximately **4.2×** and **4.1×** the mean planning time, respectively. It was **not uniformly better**: for example, at seed 21014 and H=10, CEM returned `-784.40` versus Random Shooting's `-469.31`. The 100% final-50 stability reflects only the upright criterion within that window; it does not imply low cost or stable behavior throughout each episode.
 
 ![Returns by planner and horizon](results/mpc_planner_comparison/planner_returns.png)
 
 ![Seed 21002: trajectory comparison by planner and horizon](results/mpc_planner_comparison/seed_21002_angles.png)
 
-**Files:** `results/mpc_planner_comparison/metrics.json`, `results/mpc_planner_comparison/trajectories.csv`, and the two figures above.
+Data and figures: `results/mpc_planner_comparison/metrics.json`, `results/mpc_planner_comparison/trajectories.csv`, and the two figures above.
 
 [Detailed report — Experiment 05](docs/05-random-shooting-vs-cem.md)
 
+## Experiment 06 — Improving world-model rollout accuracy
+
+I compared the original one-step model and a model fine-tuned with a five-step rollout loss, each with and without unit-circle projection at inference. The two fine-tuned configurations share the same weights; projection was not used during training. I evaluated 20 common open-loop trajectories (100 steps each) and MPC returns over 10 common reset seeds (70000–70009).
+
+| Variant | Rollout MSE H=20 | Rollout MSE H=50 | Rollout MSE H=100 | Mean MPC return ± population SD |
+|---|---:|---:|---:|---:|
+| Baseline | 0.05513 | 1.09356 | 1.55375 | -164.685 ± 168.004 |
+| Projection only | 0.04750 | 0.41052 | 2.06025 | -164.702 ± 168.193 |
+| Multi-step only | **0.00468** | **0.14542** | **1.46073** | **-140.001 ± 131.313** |
+| Multi-step + projection | **0.00436** | 0.19291 | 1.46651 | -152.879 ± 136.295 |
+
+Five-step fine-tuning improved short- and medium-horizon prediction accuracy. The average MPC improvement was much smaller and concentrated almost entirely in two seeds (`70002` and `70006`). Projection kept the predicted cosine/sine pair on the unit circle, but did not consistently improve return.
+
+![Experiment 06 rollout error](results/experiment_06/rollout_mse.png)
+
+![Experiment 06 unit-circle error](results/experiment_06/radius_error.png)
+
+I reran seeds `70002` and `70006` with trajectory logging; the episode returns matched the earlier runs. In the fine-tuned model comparison, the first difference between projected and unprojected actions occurred at step **53** for seed `70002` and step **14** for seed `70006`, before the measured state trajectories diverged at the next steps. An additional identical-state/candidate comparison on steps 30–55 of seed `70006` did not change any chosen actions, but it used newly sampled candidates and missed the earlier divergence at step 14. I have not reconstructed the original candidate-cost rankings at that step.
+
+[Main Experiment 06 report](docs/06-improving-world-model-rollouts.md) · [Closed-loop diagnostics](docs/06-closed-loop-diagnostics.md) · [Projection counterfactual](docs/06-projection-counterfactual.md)
+
 ## Interpretation and limitations
 
-- One-step metrics, multi-step metrics, and MPC returns measure **different things** and should not be compared numerically as if they were the same metric.
-- State MSE averages cosine, sine, and angular velocity terms, which have different physical scales; per-component errors should be inspected.
-- The learned dynamics do not explicitly enforce `cos²(theta) + sin²(theta) = 1`.
-- The MPC planning cost is an approximation to the environment objective: the code evaluates its cost on **predicted next states**, while the Gymnasium reward is calculated using the environment's current state. Do not describe the two as exactly identical.
-- Random Shooting and CEM are approximate sequence optimizers; equal candidate-sequence budgets do not imply equal optimization quality or wall-clock time. Increasing horizon also increases search difficulty.
-- Experiment 03 evaluated **three seeds**, Experiment 04 **ten seeds**, and Experiment 05 **30 paired seeds**. Reported `±` values are across-seed standard deviations, **not confidence intervals**. Internal planner randomness was not independently replicated.
-- The training data used random actions. Performance under planner-induced state distributions may differ.
-- Exact results can vary across versions, seeds, GPU kernels, and action-sampling behavior.
+These measurements address different questions: one-step MSE measures local prediction, long-horizon rollout MSE measures accumulated error, and MPC return measures closed-loop decisions. Improvements in one metric do not imply improvements in the others. State-space MSE also mixes cosine/sine and angular velocity on different scales.
+
+The Experiment 06 result is limited to one fine-tuning run, 20 evaluation trajectories, and 10 MPC seeds. MPC trajectories are policy-dependent, so a model's prediction errors on its own visited states are not directly comparable to another model's errors on different states. The unit-circle projection imposes geometric validity but cannot guarantee correct dynamics or better decisions. I keep model checkpoints (`*.pt`) locally rather than committing them.
 
 ## Next steps
 
-1. **Experiment 06 — Improving world-model rollout accuracy:** test unit-circle projection, multi-step training and their combination against the original one-step model.
-2. Compare per-component errors, physically invalid predictions and long-horizon rollout behavior using common evaluation trajectories.
-3. Hold the planner and evaluation seeds fixed while measuring whether lower rollout error improves MPC episode return and stabilization behavior.
-4. Extend toward latent/visual world models and lightweight VLA policies.
+1. **Experiment 07:** Implement a small recurrent latent-state dynamics model and compare reconstruction/prediction over held-out sequences. I will use this as a baseline before implementing a stochastic RSSM.
+2. Extend to stochastic latent dynamics, inference/prior distributions and imagined rollouts after establishing a working recurrent baseline.
+3. Later, replace state vectors with rendered observations and investigate visual world models.
 
-See [the roadmap](docs/roadmap.md) for longer-term work. The roadmap may need a separate update to reflect Experiments 05–06.
+See [the roadmap](docs/roadmap.md) for longer-term work.
 
 ## Repository layout
 
@@ -245,40 +270,45 @@ pendulum-world-model-lab/
 │   ├── evaluate_rollout.py
 │   ├── evaluate_mpc.py
 │   ├── evaluate_horizons.py
-│   └── compare_planners.py
+│   ├── compare_planners.py
+│   ├── experiment06.py
+│   ├── diagnose_experiment06.py
+│   ├── analyze_projection_counterfactual.py
+│   └── find_projection_divergence.py
 ├── docs/
 │   ├── roadmap.md
 │   ├── 02-multi-step-prediction.md
 │   ├── 03-model-predictive-control.md
 │   ├── 04-mpc-horizon-ablation.md
-│   └── 05-random-shooting-vs-cem.md
+│   ├── 05-random-shooting-vs-cem.md
+│   ├── 06-improving-world-model-rollouts.md
+│   ├── 06-closed-loop-diagnostics.md
+│   └── 06-projection-counterfactual.md
 ├── results/
 │   ├── first_run_observed.json
 │   ├── first_run_training_curve.png
 │   ├── multi_step/
-│   │   ├── rollout_error.png
-│   │   └── rollout_comparison.png
 │   ├── mpc/
-│   │   ├── metrics.json
-│   │   ├── trajectories.csv
-│   │   ├── returns.png
-│   │   └── angles.png
 │   ├── mpc_horizon_ablation/
-│   │   ├── metrics.json
-│   │   ├── trajectories.csv
-│   │   ├── horizon_returns.png
-│   │   └── seed_21002_angles.png
-│   └── mpc_planner_comparison/
+│   ├── mpc_planner_comparison/
+│   └── experiment_06/
 │       ├── metrics.json
-│       ├── trajectories.csv
-│       ├── planner_returns.png
-│       └── seed_21002_angles.png
-└── runs/                  # generated locally; excluded by .gitignore
-    └── one_step/
-        └── pendulum_world_model.pt
+│       ├── rollout_mse.png
+│       ├── radius_error.png
+│       ├── diagnostics/
+│       │   ├── metrics.json
+│       │   ├── trajectories.csv
+│       │   ├── seed_70002_diagnostics.png
+│       │   └── seed_70006_diagnostics.png
+│       ├── counterfactual/
+│       │   ├── seed_70006_ranking.csv
+│       │   ├── seed_70006_summary.json
+│       │   └── seed_70006_counterfactual.png
+│       └── multistep_world_model.pt  # local only; ignored by Git
+└── runs/  # local model weights, ignored by Git
 ```
 
-If a figure has not yet been generated or committed, its README image link will remain empty until that file is added. Run the corresponding script from the repository root.
+The scripts generate the figures in `results/`. I commit metrics and plots but keep model weights out of Git.
 
 ## License
 

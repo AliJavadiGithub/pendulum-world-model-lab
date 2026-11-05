@@ -1,0 +1,121 @@
+{
+  "experiment": "06-closing-loop-diagnostics",
+  "model_training": "None; loaded saved weights only",
+  "base_checkpoint": "/home/ali/projects/pendulum-world-model-lab/runs/one_step/pendulum_world_model.pt",
+  "multistep_checkpoint": "/home/ali/projects/pendulum-world-model-lab/results/experiment_06/multistep_world_model.pt",
+  "horizon": 10,
+  "candidates": 256,
+  "seeds": [
+    70002,
+    70006
+  ],
+  "notes": [
+    "Matches Experiment 06 MPC generator seed+900000 and random-shooting implementation.",
+    "One-step prediction errors are measured on policy-generated transitions, not random-action evaluation rollouts.",
+    "Wrapped-angle discontinuities at +/-pi are representational, not physical jumps.",
+    "Comparison to original return may differ if the local checkpoints or software have changed.",
+    "Observed differences do not by themselves identify a causal mechanism."
+  ],
+  "per_seed": {
+    "70002": {
+      "baseline": {
+        "total_return": -625.0599662486316,
+        "initial_theta_rad": -2.8717920995588013,
+        "initial_omega_rad_s": 0.5262280702590942,
+        "steps": 200,
+        "tail_50_stable_fraction": 1.0,
+        "mean_one_step_state_mse": 1.965113269420726e-05,
+        "mean_one_step_angle_abs_error_rad": 0.0019922387618228703,
+        "mean_one_step_omega_abs_error": 0.005479832398705185,
+        "mean_predicted_radius_error": 0.001869780421257019,
+        "first_10_consecutive_stable_step": 115
+      },
+      "projection_only": {
+        "total_return": -625.6595117850171,
+        "initial_theta_rad": -2.8717920995588013,
+        "initial_omega_rad_s": 0.5262280702590942,
+        "steps": 200,
+        "tail_50_stable_fraction": 1.0,
+        "mean_one_step_state_mse": 1.6537894845711776e-05,
+        "mean_one_step_angle_abs_error_rad": 0.001995060731588292,
+        "mean_one_step_omega_abs_error": 0.0055376536236144604,
+        "mean_predicted_radius_error": 2.205371856689453e-08,
+        "first_10_consecutive_stable_step": 115
+      },
+      "multistep_only": {
+        "total_return": -504.48063618137166,
+        "initial_theta_rad": -2.8717920995588013,
+        "initial_omega_rad_s": 0.5262280702590942,
+        "steps": 200,
+        "tail_50_stable_fraction": 1.0,
+        "mean_one_step_state_mse": 1.0229688842002815e-05,
+        "mean_one_step_angle_abs_error_rad": 0.000686491704526236,
+        "mean_one_step_omega_abs_error": 0.004490806205430999,
+        "mean_predicted_radius_error": 0.0010066646337509155,
+        "first_10_consecutive_stable_step": 87
+      },
+      "multistep_plus_projection": {
+        "total_return": -506.1047555202484,
+        "initial_theta_rad": -2.8717920995588013,
+        "initial_omega_rad_s": 0.5262280702590942,
+        "steps": 200,
+        "tail_50_stable_fraction": 1.0,
+        "mean_one_step_state_mse": 1.0029940090703349e-05,
+        "mean_one_step_angle_abs_error_rad": 0.0007638735488295556,
+        "mean_one_step_omega_abs_error": 0.004412581740762107,
+        "mean_predicted_radius_error": 2.0563602447509764e-08,
+        "first_10_consecutive_stable_step": 88
+      }
+    },
+    "70006": {
+      "baseline": {
+        "total_return": -256.4611048546637,
+        "initial_theta_rad": 1.493342969670702,
+        "initial_omega_rad_s": -0.38658568263053894,
+        "steps": 200,
+        "tail_50_stable_fraction": 1.0,
+        "mean_one_step_state_mse": 2.2832101550989136e-05,
+        "mean_one_step_angle_abs_error_rad": 0.0019955726567416543,
+        "mean_one_step_omega_abs_error": 0.005995435029035434,
+        "mean_predicted_radius_error": 0.0020431217551231382,
+        "first_10_consecutive_stable_step": 75
+      },
+      "projection_only": {
+        "total_return": -256.67102078926126,
+        "initial_theta_rad": 1.493342969670702,
+        "initial_omega_rad_s": -0.38658568263053894,
+        "steps": 200,
+        "tail_50_stable_fraction": 1.0,
+        "mean_one_step_state_mse": 2.4749063347053734e-05,
+        "mean_one_step_angle_abs_error_rad": 0.001955419568622516,
+        "mean_one_step_omega_abs_error": 0.006291475004982203,
+        "mean_predicted_radius_error": 1.609325408935547e-08,
+        "first_10_consecutive_stable_step": 76
+      },
+      "multistep_only": {
+        "total_return": -130.41598175886818,
+        "initial_theta_rad": 1.493342969670702,
+        "initial_omega_rad_s": -0.38658568263053894,
+        "steps": 200,
+        "tail_50_stable_fraction": 1.0,
+        "mean_one_step_state_mse": 8.308639334817513e-06,
+        "mean_one_step_angle_abs_error_rad": 0.0006263877706817636,
+        "mean_one_step_omega_abs_error": 0.004144646532367915,
+        "mean_predicted_radius_error": 0.000924176573753357,
+        "first_10_consecutive_stable_step": 39
+      },
+      "multistep_plus_projection": {
+        "total_return": -257.8243478260334,
+        "initial_theta_rad": 1.493342969670702,
+        "initial_omega_rad_s": -0.38658568263053894,
+        "steps": 200,
+        "tail_50_stable_fraction": 1.0,
+        "mean_one_step_state_mse": 8.886228696602938e-06,
+        "mean_one_step_angle_abs_error_rad": 0.0006767130011701166,
+        "mean_one_step_omega_abs_error": 0.004330543498508632,
+        "mean_predicted_radius_error": 1.8775463104248047e-08,
+        "first_10_consecutive_stable_step": 71
+      }
+    }
+  }
+}

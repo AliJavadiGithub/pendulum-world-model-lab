@@ -1,0 +1,25 @@
+{
+  "experiment": "06-fixed-state-projection-counterfactual",
+  "seed": 70006,
+  "source_variant": "multistep_only",
+  "step_range": [
+    30,
+    55
+  ],
+  "steps_found": 26,
+  "horizon": 10,
+  "candidates_per_step": 256,
+  "candidate_seed": 123456,
+  "changed_winner_count": 0,
+  "changed_winner_fraction": 0.0,
+  "mean_abs_first_torque_difference": 0.0,
+  "mean_spearman_cost_rank": 0.9999561486522174,
+  "mean_top10_overlap_out_of_10": 9.846153846153847,
+  "notes": [
+    "Same fixed pre-action state and same randomly drawn candidate actions under both scoring modes.",
+    "Both modes use the exact same multi-step-trained model parameters.",
+    "Candidate banks are newly generated reproducibly, not the original MPC internal draws.",
+    "This demonstrates scoring/selection sensitivity at fixed states, not causal episode-return changes.",
+    "Even different candidate indices may share similar first actions; inspect torque differences too."
+  ]
+}
